@@ -16,7 +16,8 @@ double par(void)
 	step = 1.0 / (double)num;
 	omp_lock_t writelock;
 	omp_init_lock(&writelock);
-	double t = omp_get_wtime();
+	double t = omp_get_wtime()	
+	#pragma omp parallel num_threads(num_of_threads)
 	for (i = 0; i < num; i++)
 	{
 		x = (i + 0.5)*step;
