@@ -1,12 +1,36 @@
 #include "fragmentation.h"
+#include <fstream>
 
-extern const double g_l1_max;
+#include <iostream>
+
+/*extern double g_l1_max;
 extern const double g_l2_max;
 extern const double g_l1_min;
 extern const double g_l2_min;
 extern const double g_l0;
 
-extern const double g_precision;
+extern const double g_precision;*/
+
+/// параметры начальной пр€моугольной области
+const double g_l1_max = 12.0;
+const double g_l2_max = g_l1_max;
+const double g_l1_min = 8.0;
+const double g_l2_min = g_l1_min;
+const double g_l0 = 5.0;
+
+/// точность аппроксимации рабочего пространства
+const double g_precision = 0.25;
+
+/// вектор, содержащий box-ы, €вл€ющиес€ частью рабочего пространства
+std::vector<Box> solution;
+/// вектор, содержащий box-ы, не €вл€ющиес€ частью рабочего пространства
+std::vector<Box> not_solution;
+/// вектор, содержащий box-ы, наход€щиес€ на границе между "рабочим" и "нерабочим" пространством
+std::vector<Box> boundary;
+/// вектор, хран€щий box-ы, анализируемые на следующей итерации алгоритма
+std::vector<Box> temporary_boxes;
+
+
 
 /// функции gj()
 //------------------------------------------------------------------------------------------
@@ -24,18 +48,18 @@ double g2(double x1, double x2)
 //------------------------------------------------------------------------------------------
 double g3(double x1, double x2)
 {
-	return (x1*x1 + x2*x2 - g_l2_max*g_l2_max);
+	return ((x1-g_l0)*(x1 - g_l0) + x2*x2 - g_l2_max*g_l2_max);
 }
 
 //------------------------------------------------------------------------------------------
 double g4(double x1, double x2)
 {
-	return (g_l2_min*g_l2_min - x1*x1 - x2*x2);
+	return (g_l2_min*g_l2_min - (x1 - g_l0)*(x1 - g_l0) - x2*x2);
 }
 
 
 //------------------------------------------------------------------------------------------
-low_level_fragmentation::low_level_fragmentation(double& min_x, double& min_y, double& x_width, double& y_height )
+low_level_fragmentation::low_level_fragmentation(double & min_x, double& min_y, double& x_width, double& y_height) 
 {
 	current_box = Box( min_x, min_y, x_width, y_height );
 }
@@ -50,18 +74,45 @@ low_level_fragmentation::low_level_fragmentation(const Box& box)
 void low_level_fragmentation::VerticalSplitter(const Box& box, boxes_pair& vertical_splitter_pair)
 {
 	// необходимо определить функцию
+	double min_x;
+	double min_y;
+	double x_width;
+	double y_height;
+	box.GetParameters(min_x, min_y, x_width, y_height);
+	box.GetWidhtHeight(x_width, y_height);
+	double w_half = x_width / 2;
+	Box tmp_box_2 = Box(min_x+w_half, min_y, w_half,  y_height);
+	Box tmp_box_1 = Box(min_x, min_y, w_half, y_height);
+	vertical_splitter_pair = std::pair<Box, Box>(tmp_box_1, tmp_box_2);
 }
 
 //------------------------------------------------------------------------------------------
 void low_level_fragmentation::HorizontalSplitter(const Box& box, boxes_pair& horizontal_splitter_pair)
 {
 	// необходимо определить функцию
+	double min_x, min_y, x_width, y_height;
+	box.GetParameters(min_x, min_y, x_width, y_height);
+	box.GetWidhtHeight(x_width, y_height);
+	double h_half = y_height / 2;
+	Box tmp_box_1 = Box(min_x, min_y, x_width, h_half);
+	Box tmp_box_2 = Box(min_x, min_y + h_half, x_width, h_half);
+	horizontal_splitter_pair = std::pair<Box, Box>(tmp_box_1, tmp_box_2);
 }
 
 //------------------------------------------------------------------------------------------
 void low_level_fragmentation::GetNewBoxes(const Box& box, boxes_pair& new_pair_of_boxes)
 {
 	// необходимо определить функцию
+	//unsigned int lvl = FindTreeDepth();
+	double x_width;
+	double y_height;
+	box.GetWidhtHeight(x_width, y_height);
+	if (x_width>y_height) {
+		VerticalSplitter(box, new_pair_of_boxes);
+	}
+	else {
+		HorizontalSplitter(box, new_pair_of_boxes);
+	}
 }
 
 //------------------------------------------------------------------------------------------
@@ -105,15 +156,74 @@ unsigned int low_level_fragmentation::FindTreeDepth()
 }
 
 //------------------------------------------------------------------------------------------
+// функци€ ClasifyBox() анализирует box и классифицирует его
 int low_level_fragmentation::ClasifyBox(const min_max_vectors& vects)
 {
 	// необходимо определить функцию
+	bool proc, inrange;
+	proc = false;
+	inrange = true;
+	int i = 0;
+	while (inrange && i<vects.first.size()){
+		double val = vects.first[i];
+		//std::cout << "val min" << val<<std::endl;
+		if (val > 0) inrange = false; //значит, вне области, не решение, выброс, (5) удовлетворено
+		i++;
+	}
+	if (inrange) {
+		i = 0;
+		bool flag = true;
+		while (flag && i<vects.second.size()) {
+			double val = vects.second[i];
+			if (val > 0) flag = false; //еще не решение, продолжить поиск, не уд. (4)
+			i++;
+		}
+		if (flag) inrange = true; //решение
+		else {
+			proc = true;   
+			inrange = false;
+		}
+	}
+	
+	int res = proc?2:inrange?1:0;
+	//std::cout << res<<std::endl;
+	return res;
 }
 
 //------------------------------------------------------------------------------------------
+// ‘ункци€ GetBoxType() добавл€ет классифицированный ранее box во множество решений, 
+// или удал€ет его из анализа, или добавл€ет его к граничной области, 
+// или относит его к тем, что подлежат дальнейшему анализу
 void low_level_fragmentation::GetBoxType(const Box& box)
 {
 	// необходимо определить функцию
+	min_max_vectors vects;
+	GetMinMax(box, vects);
+	int b_type = ClasifyBox(vects);
+	switch (b_type) {
+	case 0:
+		not_solution.push_back(box);
+		break;
+	case 1:
+		solution.push_back(box);
+		break;
+	case 2:
+	{
+		boxes_pair new_boxes;
+		GetNewBoxes(box, new_boxes);
+		if (new_boxes.first.GetDiagonal() < g_precision) {
+			boundary.push_back(new_boxes.first);
+			boundary.push_back(new_boxes.second);
+		}
+		else{
+			temporary_boxes.push_back(new_boxes.first);
+			temporary_boxes.push_back(new_boxes.second);
+		}
+		break;
+	}
+	default:
+		break;
+	}
 }
 
 
@@ -200,7 +310,48 @@ void high_level_analysis::GetMinMax( const Box& box, min_max_vectors& min_max_ve
 //------------------------------------------------------------------------------------------
 void high_level_analysis::GetSolution()
 {
-	// необходимо определить функцию
+	/*int its = FindTreeDepth();
+	if (its == 0) solution.push_back(current_box);
+	else {
+		temporary_boxes.push_back(current_box);
+		for (int i = 0; i < its; i++) {
+			int node_size = temporary_boxes.size();
+			std::cout << node_size;
+			//bool last = (its - 1 == i);
+			for (int j = 0; j < node_size; j++) {
+				GetBoxType(temporary_boxes.at(j));
+			}
+			temporary_boxes.erase(temporary_boxes.begin(), temporary_boxes.begin()+node_size); 
+			std::cout << i;
+		}
+	}*/
+	//int its = FindTreeDepth();
+	double diag = current_box.GetDiagonal();
+	std::cout << diag<<std::endl;
+	int i = 0;
+	if (diag<=g_precision) solution.push_back(current_box);
+	else {
+		temporary_boxes.push_back(current_box);
+		while (diag>g_precision){
+			int node_size = temporary_boxes.size();
+			//std::cout <<"node_size"<< node_size<<std::endl;
+			//bool last = (its - 1 == i);
+			for (int j = 0; j < node_size; j++) {
+				GetBoxType(temporary_boxes.at(j));
+			}
+			std::cout << temporary_boxes.size()<<std::endl;
+			temporary_boxes.erase(temporary_boxes.begin(), temporary_boxes.begin() + node_size);
+			if(!temporary_boxes.empty()) {
+				diag = temporary_boxes.at(0).GetDiagonal();
+				std::cout << diag << std::endl;
+			}
+			else {
+				std::cout << "finish"<<std::endl;
+				break;
+			}
+			std::cout << i;
+		}
+	}
 }
 
 
@@ -208,4 +359,47 @@ void high_level_analysis::GetSolution()
 void WriteResults( const char* file_names[] )
 {
 	// необходимо определить функцию
+	std::ofstream out;    // поток дл€ записи
+	out.open(file_names[0]); // окрываем файл дл€ записи
+	double x_min, y_min, width, height;
+	Box tmp_box;
+	if (out.is_open())
+	{
+		for (int i = 0; i < solution.size(); i++)
+		{
+			tmp_box = solution.at(i);
+			tmp_box.GetParameters(x_min, y_min, width, height);
+			out << x_min << " " << y_min << " " << width << " " << height << std::endl;
+		}
+	}
+
+	std::cout << std::endl;
+	out.close();
+
+	out.open(file_names[1]); // окрываем файл дл€ записи
+	if (out.is_open())
+	{
+		for (int i = 0; i < not_solution.size(); i++)
+		{
+			tmp_box = not_solution.at(i);
+			tmp_box.GetParameters(x_min, y_min, width, height);
+			out << x_min<< " " << y_min << " " << width << " " << height << std::endl;
+		}
+	}
+	std::cout << std::endl;
+	out.close();
+
+	out.open(file_names[2]); // окрываем файл дл€ записи
+	if (out.is_open())
+	{
+		for (int i = 0; i < boundary.size(); i++)
+		{
+			tmp_box = boundary.at(i);
+			tmp_box.GetParameters(x_min, y_min, width, height);
+			out << x_min << " " << y_min << " " << width << " " << height << std::endl;
+		}
+	}
+	std::cout << std::endl;
+	out.close();
+
 }

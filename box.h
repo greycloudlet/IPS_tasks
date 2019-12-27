@@ -1,12 +1,12 @@
 #pragma once
 
-/// —труктура Box описывает конкретный экземпл€р box-а
+/// Чтруктура Box описывает конкретный экземпл§р box-а
 struct Box
 {
 protected:
-	/// лева€ координата x box-a
+	/// лева§ координата x box-a
 	double x_min;
-	/// нижн€€ координата y box-a
+	/// нижн§§ координата y box-a
 	double y_min;
 	/// ширина box-a
 	double width;
@@ -15,16 +15,16 @@ protected:
 public:
 	Box() {}
 
-	Box( double min_x, double min_y, double x_width, double y_height );
+	Box(double min_x, double min_y, double x_width, double y_height);
 
 	~Box() {}
 
-	/// функци€ GetParameters() возвращает актуальные параметры box-а
-	void GetParameters( double& min_x, double& min_y, double& x_width, double& y_height ) const;
+	/// функци§ GetParameters() возвращает актуальные параметры box-а
+	void GetParameters(double& min_x, double& min_y, double& x_width, double& y_height) const;
 
-	/// функци€ GetWidhtHeight() возвращает актуальные значени€ ширины и высоты box-a
+	/// функци§ GetWidhtHeight() возвращает актуальные значени§ ширины и высоты box-a
 	void GetWidhtHeight(double& x_width, double& y_height) const;
 
-	/// функци€ GetDiagonal() возвращает диагональ box-a
+	/// функци§ GetDiagonal() возвращает диагональ box-a
 	double GetDiagonal() const;
 };
